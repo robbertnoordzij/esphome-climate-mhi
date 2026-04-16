@@ -276,6 +276,7 @@ namespace esphome {
                     break;
                 case climate::CLIMATE_MODE_OFF:
                     powerMode = MHI_OFF;
+                    break;
                 default:
                     break;
             }
@@ -379,8 +380,8 @@ namespace esphome {
             // Vertical air flow + 3D auto
             remote_state[11] |= swingV | _3DAuto;
 
-            // Horizontal air flow
-            remote_state[13] |= swingV | swingH;
+            // Horizontal air flow (low nibble); high nibble keeps default 0x10
+            remote_state[13] |= swingH;
 
             // Silent and Night mode
             remote_state[15] |= silentMode | nightMode;

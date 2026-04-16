@@ -1,0 +1,30 @@
+esphome:
+  name: mhi-test
+
+esp8266:
+  board: nodemcuv2
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../esphome/components
+
+remote_receiver:
+  id: rcvr
+  pin:
+    number: GPIO14
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+
+remote_transmitter:
+  pin: GPIO4
+  carrier_duty_percent: 50%
+
+climate:
+  - platform: mhi
+    name: "MHI Test"
+    receiver_id: rcvr
