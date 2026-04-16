@@ -22,7 +22,12 @@ wheels/
 
 # ESPHome
 .esphome/
+.pioenvs/
+.piolibdeps/
 secrets.yaml
+tests/.esphome/
+tests/.pioenvs/
+tests/.piolibdeps/
 
 # IDE
 .vscode/
