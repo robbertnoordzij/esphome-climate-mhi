@@ -8,6 +8,11 @@ namespace esphome {
         const uint8_t MHI_TEMP_MIN = 18; // Celsius
         const uint8_t MHI_TEMP_MAX = 30; // Celsius
 
+        enum MhiProtocol {
+            MHI_PROTOCOL_RLA502A700K,
+            MHI_PROTOCOL_MITSUBISHI_HEAVY_88,
+        };
+
         class MhiClimate : public climate_ir::ClimateIR {
             public:
                 MhiClimate() : climate_ir::ClimateIR(
@@ -27,10 +32,17 @@ namespace esphome {
                     }
                 ) {}
 
+                void set_protocol(MhiProtocol protocol) { this->protocol_ = protocol; }
+
             protected:
                 void transmit_state() override;
                 /// Handle received IR Buffer
                 bool on_receive(remote_base::RemoteReceiveData data) override;
+                bool on_receive_legacy_(remote_base::RemoteReceiveData data);
+                bool on_receive_mhi_88_(remote_base::RemoteReceiveData data);
+                void transmit_mhi_88_();
+
+                MhiProtocol protocol_{MHI_PROTOCOL_RLA502A700K};
 
         };
     } // namespace mhi

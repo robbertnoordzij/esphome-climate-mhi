@@ -28,3 +28,7 @@ climate:
   - platform: mhi
     name: "MHI Test"
     receiver_id: rcvr
+  - platform: mhi
+    name: "MHI 88 Test"
+    protocol: mitsubishi_heavy_88
+    receiver_id: rcvr

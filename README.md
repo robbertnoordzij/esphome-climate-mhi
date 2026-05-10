@@ -7,6 +7,9 @@ Custom component to support Mitsubishi Heavy Industries air conditioners as clim
 This code is based on remote type RLA502A700K.
 The remote was delivered with indoor unit model SRKxxZSW-W.
 
+It can also be configured for Mitsubishi Heavy 88-bit remotes supported by
+IRremoteESP8266, such as RKX502A007P / SRK25ZSP-W.
+
 Also possible to use remote receiver in ESPHome to read out IR commands sent by IR Remote.
 
 To use this, use following config in ESPHome
@@ -70,6 +73,42 @@ climate:
      receiver_id: rcvr
 ```
 
+The default protocol remains the original RLA502A700K / SRKxxZSW-W protocol.
+For 88-bit remotes, set `protocol: mitsubishi_heavy_88`:
+
+```yaml
+external_components:
+  - source:
+      type: local
+      path: esphome-climate-mhi
+
+remote_transmitter:
+  pin: GPIO4
+  carrier_duty_percent: 50%
+
+remote_receiver:
+  id: rcvr
+  pin:
+    number: GPIO14
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  tolerance: 55%
+  filter: 250us
+  idle: 25ms
+  buffer_size: 8kb
+
+climate:
+  - platform: mhi
+    name: "MHI SRK25ZSP-W"
+    protocol: mitsubishi_heavy_88
+    receiver_id: rcvr
+```
+
+Short aliases are also accepted: `mhi_88`, `mhi_152`, and
+`mitsubishi_heavy_152`.
+
 ## Features
 
 ### Supported Modes
@@ -95,6 +134,10 @@ climate:
 - Horizontal swing
 - Both (vertical and horizontal)
 
+For `protocol: mitsubishi_heavy_88`, vertical swing is always sent as off/a
+fixed safe value because SRK25ZSP-W does not support vertical swing. Horizontal
+swing is supported.
+
 ### Presets
 - **None** - Normal operation
 - **Eco** - Energy saving mode (sets fan to speed 2)
@@ -112,6 +155,8 @@ The night mode feature is now available through the **Sleep** preset. When activ
 To activate night mode, simply select the "Sleep" preset in Home Assistant's climate control interface.
 
 ## Recent Changes
+- Added optional `protocol: mitsubishi_heavy_88` support for 88-bit Mitsubishi
+  Heavy remotes via IRremoteESP8266 state mapping.
 - Fixed `ClimateIR` constructor signature for ESPHome 2026.4.0 (`std::set<...>` → `FiniteSetMask`)
 - Fixed deprecated ESPHome schema warnings for compatibility with ESPHome 2025.11.0
 - Added night mode support via the Sleep preset

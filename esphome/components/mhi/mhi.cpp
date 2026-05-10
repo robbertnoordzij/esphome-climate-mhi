@@ -1,6 +1,10 @@
 #include "mhi.h"
 #include "esphome/core/log.h"
 
+#include <cmath>
+
+#include <ir_MitsubishiHeavy.h>
+
 namespace esphome {
     namespace mhi {
         static const char *TAG = "mhi.climate";
@@ -68,7 +72,152 @@ namespace esphome {
         const uint16_t MHI_HEADER_SPACE = 1600;
         const uint16_t MHI_MIN_GAP = 17500;
 
+        const uint16_t MHI88_BIT_MARK = 370;
+        const uint16_t MHI88_ONE_SPACE = 420;
+        const uint16_t MHI88_ZERO_SPACE = 1220;
+        const uint16_t MHI88_HEADER_MARK = 3140;
+        const uint16_t MHI88_HEADER_SPACE = 1630;
+        const uint32_t MHI88_MIN_GAP = 100000;
+
+        const char *std_ac_mode_to_string(stdAc::opmode_t mode) {
+            switch (mode) {
+                case stdAc::opmode_t::kAuto:
+                    return "auto";
+                case stdAc::opmode_t::kCool:
+                    return "cool";
+                case stdAc::opmode_t::kHeat:
+                    return "heat";
+                case stdAc::opmode_t::kDry:
+                    return "dry";
+                case stdAc::opmode_t::kFan:
+                    return "fan_only";
+                case stdAc::opmode_t::kOff:
+                default:
+                    return "off";
+            }
+        }
+
+        const char *std_ac_fan_to_string(stdAc::fanspeed_t fan) {
+            switch (fan) {
+                case stdAc::fanspeed_t::kLow:
+                    return "low";
+                case stdAc::fanspeed_t::kMedium:
+                    return "medium";
+                case stdAc::fanspeed_t::kHigh:
+                case stdAc::fanspeed_t::kMax:
+                    return "high";
+                case stdAc::fanspeed_t::kAuto:
+                default:
+                    return "auto";
+            }
+        }
+
+        const char *std_ac_swingh_to_string(stdAc::swingh_t swing) {
+            switch (swing) {
+                case stdAc::swingh_t::kAuto:
+                    return "auto";
+                case stdAc::swingh_t::kLeftMax:
+                    return "left_max";
+                case stdAc::swingh_t::kLeft:
+                    return "left";
+                case stdAc::swingh_t::kMiddle:
+                    return "middle";
+                case stdAc::swingh_t::kRight:
+                    return "right";
+                case stdAc::swingh_t::kRightMax:
+                    return "right_max";
+                case stdAc::swingh_t::kWide:
+                    return "wide";
+                case stdAc::swingh_t::kOff:
+                default:
+                    return "off";
+            }
+        }
+
+        uint8_t mhi_88_mode_from_climate(climate::ClimateMode mode) {
+            switch (mode) {
+                case climate::CLIMATE_MODE_HEAT_COOL:
+                    return kMitsubishiHeavyAuto;
+                case climate::CLIMATE_MODE_COOL:
+                    return kMitsubishiHeavyCool;
+                case climate::CLIMATE_MODE_HEAT:
+                    return kMitsubishiHeavyHeat;
+                case climate::CLIMATE_MODE_DRY:
+                    return kMitsubishiHeavyDry;
+                case climate::CLIMATE_MODE_FAN_ONLY:
+                    return kMitsubishiHeavyFan;
+                default:
+                    return kMitsubishiHeavyAuto;
+            }
+        }
+
+        uint8_t mhi_88_fan_from_climate(optional<climate::ClimateFanMode> fan_mode) {
+            if (!fan_mode.has_value())
+                return kMitsubishiHeavy88FanAuto;
+            switch (fan_mode.value()) {
+                case climate::CLIMATE_FAN_LOW:
+                    return kMitsubishiHeavy88FanLow;
+                case climate::CLIMATE_FAN_MEDIUM:
+                    return kMitsubishiHeavy88FanMed;
+                case climate::CLIMATE_FAN_HIGH:
+                    return kMitsubishiHeavy88FanHigh;
+                case climate::CLIMATE_FAN_AUTO:
+                default:
+                    return kMitsubishiHeavy88FanAuto;
+            }
+        }
+
+        climate::ClimateMode climate_mode_from_std_ac(const stdAc::state_t &state) {
+            if (!state.power)
+                return climate::CLIMATE_MODE_OFF;
+
+            switch (state.mode) {
+                case stdAc::opmode_t::kCool:
+                    return climate::CLIMATE_MODE_COOL;
+                case stdAc::opmode_t::kHeat:
+                    return climate::CLIMATE_MODE_HEAT;
+                case stdAc::opmode_t::kDry:
+                    return climate::CLIMATE_MODE_DRY;
+                case stdAc::opmode_t::kFan:
+                    return climate::CLIMATE_MODE_FAN_ONLY;
+                case stdAc::opmode_t::kAuto:
+                    return climate::CLIMATE_MODE_HEAT_COOL;
+                case stdAc::opmode_t::kOff:
+                default:
+                    return climate::CLIMATE_MODE_OFF;
+            }
+        }
+
+        climate::ClimateFanMode climate_fan_from_std_ac(stdAc::fanspeed_t fan) {
+            switch (fan) {
+                case stdAc::fanspeed_t::kLow:
+                case stdAc::fanspeed_t::kMin:
+                    return climate::CLIMATE_FAN_LOW;
+                case stdAc::fanspeed_t::kMedium:
+                case stdAc::fanspeed_t::kMediumHigh:
+                    return climate::CLIMATE_FAN_MEDIUM;
+                case stdAc::fanspeed_t::kHigh:
+                case stdAc::fanspeed_t::kMax:
+                    return climate::CLIMATE_FAN_HIGH;
+                case stdAc::fanspeed_t::kAuto:
+                default:
+                    return climate::CLIMATE_FAN_AUTO;
+            }
+        }
+
+        climate::ClimateSwingMode climate_swing_from_std_ac(const stdAc::state_t &state) {
+            if (state.swingh != stdAc::swingh_t::kOff)
+                return climate::CLIMATE_SWING_HORIZONTAL;
+            return climate::CLIMATE_SWING_OFF;
+        }
+
         bool MhiClimate::on_receive(remote_base::RemoteReceiveData data) {
+            if (this->protocol_ == MHI_PROTOCOL_MITSUBISHI_HEAVY_88)
+                return this->on_receive_mhi_88_(data);
+            return this->on_receive_legacy_(data);
+        }
+
+        bool MhiClimate::on_receive_legacy_(remote_base::RemoteReceiveData data) {
             ESP_LOGD(TAG, "Received some bytes");
 
             // The protocol sends the data twice, read here
@@ -221,7 +370,137 @@ namespace esphome {
             return true;
         }
 
+        bool MhiClimate::on_receive_mhi_88_(remote_base::RemoteReceiveData data) {
+            ESP_LOGD(TAG, "Received candidate Mitsubishi Heavy 88-bit frame");
+
+            uint8_t bytes[kMitsubishiHeavy88StateLength] = {};
+
+            if (!data.expect_item(MHI88_HEADER_MARK, MHI88_HEADER_SPACE))
+                return false;
+
+            for (uint8_t a_byte = 0; a_byte < kMitsubishiHeavy88StateLength; a_byte++) {
+                uint8_t byte = 0;
+                for (int8_t a_bit = 7; a_bit >= 0; a_bit--) {
+                    if (data.expect_item(MHI88_BIT_MARK, MHI88_ONE_SPACE))
+                        byte |= 1 << a_bit;
+                    else if (!data.expect_item(MHI88_BIT_MARK, MHI88_ZERO_SPACE))
+                        return false;
+                }
+                bytes[a_byte] = byte;
+            }
+
+            ESP_LOGD(TAG,
+                "Received MITSUBISHI_HEAVY_88 bytes 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X",
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5], bytes[6], bytes[7],
+                bytes[8], bytes[9], bytes[10]
+            );
+
+            if (!IRMitsubishiHeavy88Ac::checkZjsSig(bytes)) {
+                ESP_LOGD(TAG, "MITSUBISHI_HEAVY_88 signature check failed");
+                return false;
+            }
+
+            if (!IRMitsubishiHeavy88Ac::validChecksum(bytes)) {
+                ESP_LOGD(TAG, "MITSUBISHI_HEAVY_88 checksum check failed");
+                return false;
+            }
+
+            IRMitsubishiHeavy88Ac ac(0);
+            ac.setRaw(bytes);
+            auto state = ac.toCommon();
+
+            ESP_LOGD(TAG,
+                "Decoded protocol=MITSUBISHI_HEAVY_88 power=%s mode=%s temp=%.1f fan=%s swing_h=%s swing_v=%d",
+                ONOFF(state.power), std_ac_mode_to_string(state.mode), state.degrees,
+                std_ac_fan_to_string(state.fanspeed), std_ac_swingh_to_string(state.swingh),
+                static_cast<int>(state.swingv)
+            );
+
+            this->mode = climate_mode_from_std_ac(state);
+            this->target_temperature = state.degrees;
+            this->fan_mode = climate_fan_from_std_ac(state.fanspeed);
+            this->swing_mode = climate_swing_from_std_ac(state);
+            this->publish_state();
+            return true;
+        }
+
+        void MhiClimate::transmit_mhi_88_() {
+            IRMitsubishiHeavy88Ac ac(0);
+            ac.stateReset();
+            ac.setPower(this->mode != climate::CLIMATE_MODE_OFF);
+            ac.setMode(mhi_88_mode_from_climate(this->mode));
+
+            uint8_t temperature = 22;
+            if (this->target_temperature >= MHI_TEMP_MIN && this->target_temperature <= MHI_TEMP_MAX)
+                temperature = static_cast<uint8_t>(std::round(this->target_temperature));
+            ac.setTemp(temperature);
+
+            ac.setFan(mhi_88_fan_from_climate(this->fan_mode));
+            ac.setSwingVertical(kMitsubishiHeavy88SwingVOff);
+            if (this->swing_mode == climate::CLIMATE_SWING_HORIZONTAL || this->swing_mode == climate::CLIMATE_SWING_BOTH)
+                ac.setSwingHorizontal(kMitsubishiHeavy88SwingHAuto);
+            else
+                ac.setSwingHorizontal(kMitsubishiHeavy88SwingHOff);
+
+            ac.setClean(false);
+            ac.set3D(false);
+            ac.setEcono(false);
+            ac.setTurbo(false);
+            if (this->preset.has_value()) {
+                switch (this->preset.value()) {
+                    case climate::CLIMATE_PRESET_ECO:
+                        ac.setEcono(true);
+                        break;
+                    case climate::CLIMATE_PRESET_BOOST:
+                        ac.setTurbo(true);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            auto *bytes = ac.getRaw();
+            ESP_LOGD(TAG,
+                "Sending MITSUBISHI_HEAVY_88 power=%s mode=%d temp=%u fan=%u swing_h=%u swing_v=%u",
+                ONOFF(ac.getPower()), ac.getMode(), ac.getTemp(), ac.getFan(),
+                ac.getSwingHorizontal(), ac.getSwingVertical()
+            );
+            ESP_LOGD(TAG,
+                "Sent MITSUBISHI_HEAVY_88 bytes 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X",
+                bytes[0], bytes[1], bytes[2], bytes[3],
+                bytes[4], bytes[5], bytes[6], bytes[7],
+                bytes[8], bytes[9], bytes[10]
+            );
+
+            auto transmit = this->transmitter_->transmit();
+            auto data = transmit.get_data();
+            data->set_carrier_frequency(38000);
+            data->reserve(2 + (kMitsubishiHeavy88StateLength * 16) + 2);
+
+            data->mark(MHI88_HEADER_MARK);
+            data->space(MHI88_HEADER_SPACE);
+            for (uint8_t i = 0; i < kMitsubishiHeavy88StateLength; i++) {
+                for (int8_t j = 7; j >= 0; j--) {
+                    data->mark(MHI88_BIT_MARK);
+                    bool bit = bytes[i] & (1 << j);
+                    data->space(bit ? MHI88_ONE_SPACE : MHI88_ZERO_SPACE);
+                }
+            }
+            data->mark(MHI88_BIT_MARK);
+            data->space(0);
+
+            transmit.set_send_times(kMitsubishiHeavy88MinRepeat + 1);
+            transmit.set_send_wait(MHI88_MIN_GAP);
+            transmit.perform();
+        }
+
         void MhiClimate::transmit_state() {
+            if (this->protocol_ == MHI_PROTOCOL_MITSUBISHI_HEAVY_88) {
+                this->transmit_mhi_88_();
+                return;
+            }
+
             uint8_t remote_state[] = {
                 0x52, 0xAE, 0xC3, 0x1A,
                 0xE5, 0x90, 0x00, 0xF0,
