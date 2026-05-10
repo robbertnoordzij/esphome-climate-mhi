@@ -380,7 +380,7 @@ namespace esphome {
 
             for (uint8_t a_byte = 0; a_byte < kMitsubishiHeavy88StateLength; a_byte++) {
                 uint8_t byte = 0;
-                for (int8_t a_bit = 7; a_bit >= 0; a_bit--) {
+                for (uint8_t a_bit = 0; a_bit < 8; a_bit++) {
                     if (data.expect_item(MHI88_BIT_MARK, MHI88_ONE_SPACE))
                         byte |= 1 << a_bit;
                     else if (!data.expect_item(MHI88_BIT_MARK, MHI88_ZERO_SPACE))
@@ -481,7 +481,7 @@ namespace esphome {
             data->mark(MHI88_HEADER_MARK);
             data->space(MHI88_HEADER_SPACE);
             for (uint8_t i = 0; i < kMitsubishiHeavy88StateLength; i++) {
-                for (int8_t j = 7; j >= 0; j--) {
+                for (uint8_t j = 0; j < 8; j++) {
                     data->mark(MHI88_BIT_MARK);
                     bool bit = bytes[i] & (1 << j);
                     data->space(bit ? MHI88_ONE_SPACE : MHI88_ZERO_SPACE);
